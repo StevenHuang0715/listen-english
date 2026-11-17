@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>聽書學英文</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>📖 聽書學英文</h1>
+    <button id="btn-add" class="btn primary">＋ 加入書本</button>
+  </header>
+
+  <main>
+    <!-- 書架 -->
+    <section id="view-library">
+      <div id="tr-banner" class="banner" hidden></div>
+      <div id="resume-card" class="resume-card" hidden></div>
+      <h2 class="section-title">我的書架</h2>
+      <div id="book-grid" class="book-grid"></div>
+      <div id="empty-hint" class="empty" hidden>
+        <p>書架還是空的。</p>
+        <p>點右上角「＋ 加入書本」，從熱門英文經典挑一本。<br>
+          每一段會先唸英文、再唸中文翻譯。</p>
+      </div>
+    </section>
+
+    <!-- 播放器 -->
+    <section id="view-player" hidden>
+      <button id="btn-back" class="btn ghost">‹ 回書架</button>
+
+      <div class="now compact">
+        <div id="p-cover" class="p-cover"></div>
+        <div class="now-info">
+          <h2 id="p-title"></h2>
+          <p id="p-title-en" class="title-en" lang="en" hidden></p>
+          <p id="p-author" class="muted"></p>
+          <p id="p-chapter" class="chapter-name"></p>
+        </div>
+      </div>
+
+      <div class="bilingual">
+        <p id="t-en" class="t-en" lang="en"></p>
+        <p id="t-zh" class="t-zh"></p>
+      </div>
+
+      <div class="seek">
+        <input id="p-seek" type="range" min="0" max="0" step="1" value="0" aria-label="播放位置">
+        <div class="times"><span id="p-cur">第 1 段</span><span id="p-dur"></span></div>
+      </div>
+
+      <div class="controls">
+        <button id="c-prev" class="round" title="上一章" aria-label="上一章">⏮</button>
+        <button id="c-back" class="round" title="重聽／上一段" aria-label="重聽或上一段"><span>↺</span><small>上一段</small></button>
+        <button id="c-play" class="round big" title="播放／暫停" aria-label="播放／暫停">▶</button>
+        <button id="c-fwd" class="round" title="下一段" aria-label="下一段"><span>↻</span><small>下一段</small></button>
+        <button id="c-next" class="round" title="下一章" aria-label="下一章">⏭</button>
+      </div>
+
+      <div class="options">
+        <label>順序
+          <select id="o-mode">
+            <option value="en-zh">英 → 中</option>
+            <option value="en-zh-en">英 → 中 → 英</option>
+            <option value="en-en-zh">英 → 英 → 中</option>
+            <option value="en">只有英文</option>
+          </select>
+        </label>
+        <label>英文速度
+          <select id="o-rate-en">
+            <option value="0.6">0.6×</option>
+            <option value="0.7">0.7×</option>
+            <option value="0.8">0.8×</option>
+            <option value="0.9">0.9×</option>
+            <option value="1">1×</option>
+            <option value="1.1">1.1×</option>
+            <option value="1.2">1.2×</option>
+          </select>
+        </label>
+        <label>中文速度
+          <select id="o-rate-zh">
+            <option value="0.9">0.9×</option>
+            <option value="1">1×</option>
+            <option value="1.1">1.1×</option>
+            <option value="1.2">1.2×</option>
+            <option value="1.3">1.3×</option>
+            <option value="1.5">1.5×</option>
+          </select>
+        </label>
+        <label>睡眠定時
+          <select id="o-sleep">
+            <option value="off">關閉</option>
+            <option value="5">5 分鐘</option>
+            <option value="15">15 分鐘</option>
+            <option value="30">30 分鐘</option>
+            <option value="45">45 分鐘</option>
+            <option value="60">60 分鐘</option>
+            <option value="90">90 分鐘</option>
+            <option value="chapter">本章結束</option>
+          </select>
+        </label>
+        <span id="sleep-left" class="sleep-left"></span>
+        <label class="check-inline"><input id="o-show-zh" type="checkbox" checked> 顯示中文</label>
+      </div>
+
+      <button id="btn-bookmark" class="btn primary wide">⭐ 收藏這一段</button>
+
+      <div class="panel tr-panel">
+        <div class="tr-row">
+          <span id="tr-status" class="muted"></span>
+          <button id="btn-tr-all" class="btn small">翻譯整本</button>
+        </div>
+        <div id="tr-bar" class="bar" hidden><span></span></div>
+      </div>
+
+      <details class="panel" open>
+        <summary>收藏的句子 <span id="bm-count" class="muted"></span></summary>
+        <ul id="bm-list" class="list"></ul>
+      </details>
+
+      <details class="panel">
+        <summary>章節</summary>
+        <ol id="ch-list" class="list"></ol>
+      </details>
+
+      <details class="panel">
+        <summary>聲音設定</summary>
+        <div class="stack voice-set">
+          <label>英文聲音 <select id="o-voice-en"></select></label>
+          <label>中文聲音 <select id="o-voice-zh"></select></label>
+          <p class="note">用 Microsoft Edge 開啟，可以選到名稱有「Online (Natural)」的自然語音，聽起來最像真人。</p>
+        </div>
+      </details>
+
+      <p id="p-license" class="license"></p>
+      <div class="row end">
+        <button id="btn-export" class="btn ghost">匯出（帶到手機）</button>
+        <button id="btn-delete" class="btn danger">刪除這本書</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- 書架頁底部的迷你播放列 -->
+  <div id="mini" class="mini" hidden>
+    <button id="mini-open" class="mini-info"><span id="mini-title"></span><small id="mini-sub" class="muted"></small></button>
+    <button id="mini-play" class="round" aria-label="播放／暫停">▶</button>
+  </div>
+
+  <!-- 加入書本 -->
+  <dialog id="dlg-add">
+    <div class="dlg-head">
+      <h3>加入書本</h3>
+      <button class="btn ghost small" data-close aria-label="關閉">✕</button>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="popular">熱門經典</button>
+      <button class="tab" data-tab="search">搜尋</button>
+      <button class="tab" data-tab="import">匯入檔案</button>
+    </div>
+
+    <div class="tab-panel" data-panel="popular">
+      <p class="note">來自 <a href="https://www.gutenberg.org" target="_blank" rel="noopener">Project Gutenberg</a>，
+        依全球下載量排序。都是著作權已過期的公有領域作品，可以合法免費閱讀。</p>
+      <div id="pop-results" class="lv-results"></div>
+      <button id="pop-more" class="btn ghost wide" hidden>載入更多</button>
+    </div>
+
+    <div class="tab-panel" data-panel="search" hidden>
+      <form id="search-form" class="row">
+        <input id="search-q" type="search" placeholder="書名或作者，例如 傲慢與偏見、Sherlock、Austen">
+        <button class="btn primary">搜尋</button>
+      </form>
+      <div id="search-results" class="lv-results"></div>
+      <button id="search-more" class="btn ghost wide" hidden>載入更多</button>
+    </div>
+
+    <div class="tab-panel" data-panel="import" hidden>
+      <p class="note"><strong>英文 .txt</strong>：例如從 Gutenberg 網站下載的「Plain Text UTF-8」檔，請只匯入公有領域或你有權使用的文字。<br>
+        <strong>.json 備份</strong>：在電腦上用「匯出」產生的檔案（含已翻好的中文），手機沒有翻譯功能時用這個。</p>
+      <form id="import-form" class="stack">
+        <label class="file-pick">📄 選擇 .txt 或 .json 檔
+          <input id="import-file" type="file" accept=".txt,.json,text/plain,application/json"></label>
+        <div id="import-picked" class="muted"></div>
+        <input id="import-title" placeholder="書名（.txt 才需要）">
+        <input id="import-author" placeholder="作者（可不填）">
+        <label class="check"><input id="import-legal" type="checkbox">
+          我確認這是公有領域作品，或我有權使用這份文字</label>
+        <button class="btn primary">加入書架</button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- 收藏備註 -->
+  <dialog id="dlg-bm">
+    <form method="dialog">
+      <h3>收藏這一段</h3>
+      <p id="bm-preview" class="note"></p>
+      <input id="bm-note" maxlength="100" placeholder="備註（可不填），例如：生字 acknowledged">
+      <menu>
+        <button class="btn ghost" value="cancel" formnovalidate>取消</button>
+        <button class="btn primary" value="ok">收藏</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
