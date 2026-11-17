@@ -1,6 +1,6 @@
 // Service Worker：可安裝到手機主畫面、沒網路也能打開
 // 同源檔案「先網路、失敗才用快取」，更新程式後重新整理就會生效
-const CACHE = 'listen-english-v2';
+const CACHE = 'listen-english-v3';
 const SHELL = [
   './',
   'index.html',
@@ -12,6 +12,7 @@ const SHELL = [
   'js/catalog.js',
   'js/textbook.js',
   'js/zhtitles.js',
+  'js/gemini.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',

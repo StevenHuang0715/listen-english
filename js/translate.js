@@ -2,11 +2,15 @@
 // 每段只翻譯一次，翻好就存進 IndexedDB，之後不需要網路、也不用再翻。
 
 import * as db from './db.js';
+import * as gemini from './gemini.js';
 
 const OPTS = { sourceLanguage: 'en', targetLanguage: 'zh-Hant' };
 let translatorPromise = null;
 
 export const supported = () => 'Translator' in self;
+
+/** 這台裝置能不能翻譯（Gemini 金鑰或內建翻譯） */
+export const canTranslate = () => gemini.enabled() || supported();
 
 /** 'unsupported' | 'unavailable' | 'downloadable' | 'downloading' | 'available' */
 export async function availability() {
@@ -52,10 +56,13 @@ export function fixPunct(s) {
 
 /** 一本書的翻譯快取：按章存放，缺的才翻 */
 export class Translations {
-  constructor(bookId, en, onChange) {
+  constructor(bookId, en, onChange, book = null) {
     this.bookId = bookId;
     this.en = en;
     this.onChange = onChange;
+    this.book = book; // 給 Gemini 的書名、作者
+    this.pending = new Map(); // `${章}:${段}` → 正在翻譯的 Gemini 請求
+    this.batchSize = 20;
     this.cache = new Map();
     this.dirty = new Set();
     this.saveTimer = null;
@@ -83,6 +90,14 @@ export class Translations {
   async get(ch, i) {
     const arr = await this.chapter(ch);
     if (arr[i] != null) return arr[i];
+    if (gemini.enabled() || this.pending.has(`${ch}:${i}`)) {
+      try {
+        await this.geminiBatch(ch, i, arr);
+        if (arr[i] != null) return arr[i];
+      } catch (e) {
+        if (!supported()) throw e; // 沒有內建翻譯可以退
+      }
+    }
     if (!supported()) return null;
     const run = this.chain.then(async () => {
       if (arr[i] != null) return arr[i];
@@ -95,9 +110,38 @@ export class Translations {
     return run;
   }
 
+  /**
+   * 用 Gemini 翻譯從第 i 段開始、還沒翻的連續幾段（一次請求）
+   * 同一段已經在翻的話，等那個請求就好
+   */
+  geminiBatch(ch, i, arr) {
+    const key = (j) => `${ch}:${j}`;
+    if (this.pending.has(key(i))) return this.pending.get(key(i));
+    const idx = [];
+    let chars = 0;
+    for (let j = i; j < arr.length && idx.length < this.batchSize && chars < 6000; j++) {
+      if (arr[j] != null || this.pending.has(key(j))) break;
+      idx.push(j);
+      chars += this.en[ch][j].length;
+    }
+    const context = [];
+    for (let j = Math.max(0, i - 3); j < i; j++) context.push({ en: this.en[ch][j], zh: arr[j] });
+    const run = gemini.translateSafe(idx.map((j) => this.en[ch][j]), { book: this.book, context }).then((zhs) => {
+      idx.forEach((j, k) => {
+        if (arr[j] == null) arr[j] = fixPunct(zhs[k]);
+      });
+      this.markDirty(ch);
+    }).finally(() => {
+      for (const j of idx) this.pending.delete(key(j));
+    });
+    for (const j of idx) this.pending.set(key(j), run);
+    return run;
+  }
+
   /** 播放時預先翻譯後面幾段，讓英文唸完時中文已經好了 */
   async prefetch(ch, from, n = 4) {
-    if (!supported()) return;
+    if (!canTranslate()) return;
+    if (gemini.enabled()) n = 10; // Gemini 一次翻一批，提早送出下一批
     const key = `${ch}:${from}`;
     this.prefetchKey = key;
     const arr = await this.chapter(ch);
@@ -146,8 +190,19 @@ export class Translations {
   /** 翻譯整本書；shouldStop() 回傳 true 就停 */
   async translateAll(onProgress, shouldStop) {
     let { done, total } = await this.stats();
+    this.batchSize = 40; // 整本翻譯：一次多翻一點，減少請求次數
+    try {
+      return await this.translateAllInner(onProgress, shouldStop, done, total);
+    } finally {
+      this.batchSize = 20;
+    }
+  }
+
+  async translateAllInner(onProgress, shouldStop, done, total) {
+    const count = (arr) => arr.reduce((n, x) => n + (x != null), 0);
     for (let c = 0; c < this.en.length; c++) {
       const arr = await this.chapter(c);
+      let have = count(arr);
       for (let i = 0; i < arr.length; i++) {
         if (shouldStop()) {
           await this.flush();
@@ -155,8 +210,12 @@ export class Translations {
         }
         if (arr[i] == null) {
           await this.get(c, i);
-          done++;
-          if (done % 5 === 0) onProgress(done, total);
+          // Gemini 一次會翻好好幾段，重新數一次
+          const now = count(arr);
+          if (now === have) throw new Error(gemini.disabled() ?? '這段翻不出來');
+          done += now - have;
+          have = now;
+          onProgress(done, total);
         }
       }
     }

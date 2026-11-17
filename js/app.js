@@ -1,6 +1,7 @@
 import * as db from './db.js';
 import * as catalog from './catalog.js';
 import * as translate from './translate.js';
+import * as gemini from './gemini.js';
 import * as zht from './zhtitles.js';
 import { decodeBuffer, parseBook } from './textbook.js';
 import { BilingualPlayer, MODES, listVoices, ttsSupported } from './player.js';
@@ -21,7 +22,8 @@ let trStatusTimer = null;
 const SAVE_EVERY_MS = 5000;
 const REWIND_AFTER_MS = 10 * 60 * 1000; // 超過 10 分鐘沒聽，回來時倒退 1 段
 const FADE_MS = 30 * 1000;
-const SEC_PER_SEGMENT = 0.2; // 估算翻譯時間用
+const SEC_PER_SEGMENT = 0.2; // 估算翻譯時間用（內建翻譯）
+const SEC_PER_SEGMENT_GEMINI = 0.25; // Gemini：一次 40 段，請求間隔約 5～10 秒
 const EXPORT_FORMAT = 'listen-english-book';
 
 /* ---------------- 小工具 ---------------- */
@@ -135,8 +137,14 @@ function prepareTranslator() {
   }).catch((e) => toast(`無法啟用翻譯：${e.message}`, 5000));
 }
 
+/** 瀏覽器內建翻譯能不能用 */
+const edgeOk = () => translate.supported() && trAvail !== 'unavailable';
+/** 這台裝置能不能翻譯（Gemini 或內建） */
+const canTr = () => gemini.enabled() || edgeOk();
+
 function zhPlaceholder() {
-  if (!translate.supported() || trAvail === 'unavailable') return '（這個瀏覽器沒有內建翻譯，這段還沒翻好）';
+  if (gemini.enabled()) return '翻譯中…';
+  if (!edgeOk()) return gemini.disabled() ? `（${gemini.disabled()}）` : '（還沒翻譯。到「翻譯設定」貼上免費的 Gemini 金鑰，就能在這台裝置翻譯）';
   if (!trReady && trAvail !== 'available') return '（按 ▶ 播放後會自動翻譯）';
   return '翻譯中…';
 }
@@ -206,11 +214,87 @@ function bookCard(book, p) {
 
 function renderBanner() {
   const b = $('#tr-banner');
-  const noTr = !translate.supported() || trAvail === 'unavailable';
+  const noTr = !canTr();
   const noTts = !ttsSupported();
   b.hidden = !noTr && !noTts;
+  b.classList.toggle('clickable', noTr && !noTts);
+  b.onclick = noTr && !noTts ? openSettings : null;
   if (noTts) b.textContent = '這個瀏覽器不支援語音朗讀，請改用 Edge、Chrome 或 Safari。';
-  else if (noTr) b.textContent = '這個瀏覽器沒有內建翻譯，只能聽已經翻好的部分。建議在電腦版 Edge 加入書並「翻譯整本」，再用「匯出」把檔案帶到這台裝置匯入。';
+  else if (noTr) {
+    b.textContent = gemini.disabled()
+      ? `${gemini.disabled()}。這段期間只能聽已經翻好的部分。（點這裡開啟翻譯設定）`
+      : '這台裝置還不能翻譯。點這裡到「⚙ 翻譯設定」貼上免費的 Gemini 金鑰，就能直接在這台裝置邊聽邊翻。';
+  }
+}
+
+/* ---------------- 翻譯設定（Gemini 金鑰） ---------------- */
+
+function openSettings() {
+  const dlg = $('#dlg-settings');
+  $('#gm-key').value = gemini.getKey();
+  $('#gm-key').type = 'password';
+  $('#gm-show').checked = false;
+  const sel = $('#gm-model');
+  const model = gemini.getModel();
+  const opts = gemini.MODELS.some(([id]) => id === model) ? gemini.MODELS : [...gemini.MODELS, [model, model]];
+  sel.replaceChildren(...opts.map(([id, label]) => h('option', { value: id, selected: id === model }, label)));
+  setGmStatus(gemini.configured()
+    ? (gemini.disabled() ? `目前暫停使用：${gemini.disabled()}` : '已設定金鑰，翻譯會使用 Gemini。')
+    : (edgeOk() ? '還沒設定金鑰，目前使用瀏覽器內建翻譯。' : '還沒設定金鑰，這台裝置目前不能翻譯。'),
+  gemini.disabled() ? 'err' : '');
+  dlg.showModal();
+}
+
+function setGmStatus(text, cls = '') {
+  const el = $('#gm-status');
+  el.textContent = text;
+  el.className = `note gm-status ${cls}`;
+}
+
+function bindSettings() {
+  const dlg = $('#dlg-settings');
+  $('#btn-settings').onclick = openSettings;
+  $('#btn-tr-settings').onclick = openSettings;
+  $$('[data-close]', dlg).forEach((b) => { b.onclick = () => dlg.close(); });
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  $('#gm-show').onchange = (e) => { $('#gm-key').type = e.target.checked ? 'text' : 'password'; };
+  $('#gm-save').onclick = async () => {
+    const key = $('#gm-key').value.trim();
+    const model = $('#gm-model').value;
+    if (!key) return setGmStatus('請先貼上金鑰', 'err');
+    const btn = $('#gm-save');
+    btn.disabled = true;
+    setGmStatus('測試中…（翻譯一句試試看）');
+    try {
+      const zh = await gemini.test(key, model);
+      gemini.save(key, model);
+      setGmStatus(`成功！已儲存。試譯：${translate.fixPunct(zh)}`, 'ok');
+      afterSettingsChange();
+    } catch (e) {
+      setGmStatus(`沒有成功：${e.message}`, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  $('#gm-clear').onclick = () => {
+    if (gemini.configured() && !confirm('確定要清除這台裝置上的 Gemini 金鑰嗎？')) return;
+    gemini.save('', '');
+    $('#gm-key').value = '';
+    setGmStatus(edgeOk() ? '已清除。改用瀏覽器內建翻譯。' : '已清除。這台裝置目前不能翻譯。');
+    afterSettingsChange();
+  };
+  gemini.setNotifier((msg) => {
+    toast(`${msg}${edgeOk() ? '，先改用瀏覽器內建翻譯' : ''}`, 7000);
+    afterSettingsChange();
+  });
+}
+
+function afterSettingsChange() {
+  renderBanner();
+  if (!cur) return;
+  updateTextUI();
+  updateTrStatus();
+  player.showTranslation();
 }
 
 /* ---------------- 開書 / 存進度 ---------------- */
@@ -417,16 +501,20 @@ async function updateTrStatus() {
   const [c, all] = await Promise.all([tr.stats(player.chapter), tr.stats()]);
   if (player.tr !== tr || trAll) return;
   const pct = all.total ? Math.floor((all.done / all.total) * 100) : 0;
-  $('#tr-status').textContent = `已翻譯：本章 ${c.done}/${c.total} 段 · 全書 ${pct}%`;
+  const engine = gemini.enabled() ? 'Gemini' : edgeOk() ? '內建翻譯' : '';
+  $('#tr-status').textContent = `已翻譯：本章 ${c.done}/${c.total} 段 · 全書 ${pct}%${engine ? `（${engine}）` : ''}`;
   const btn = $('#btn-tr-all');
-  const canTr = translate.supported() && trAvail !== 'unavailable';
-  btn.hidden = !canTr || all.done >= all.total;
-  btn.textContent = `翻譯整本（約 ${Math.max(1, Math.ceil(((all.total - all.done) * SEC_PER_SEGMENT) / 60))} 分鐘）`;
+  btn.hidden = !canTr() || all.done >= all.total;
+  const sec = gemini.enabled() ? SEC_PER_SEGMENT_GEMINI : SEC_PER_SEGMENT;
+  btn.textContent = `翻譯整本（約 ${Math.max(1, Math.ceil(((all.total - all.done) * sec) / 60))} 分鐘）`;
 }
 
 async function translateWholeBook() {
   if (trAll) {
     trAll.stop = true;
+    // 正在送出的那一批翻完才會停（Gemini 可能要等幾秒）
+    $('#btn-tr-all').textContent = '停止中…';
+    $('#btn-tr-all').disabled = true;
     return;
   }
   if (!cur || !player.tr) return;
@@ -451,12 +539,13 @@ async function translateWholeBook() {
       },
       () => job.stop || player.tr !== tr,
     );
-    if (finished) toast('整本翻譯完成 🎉 現在可以離線聽，也可以匯出到手機', 5000);
+    if (finished) toast('整本翻譯完成 🎉 現在可以離線聽了', 5000);
   } catch (e) {
     toast(`翻譯中斷：${e.message}`, 5000);
   } finally {
     trAll = null;
     bar.hidden = true;
+    btn.disabled = false;
     updateTrStatus();
   }
 }
@@ -957,6 +1046,7 @@ function bindControls() {
 bindPlayer();
 bindControls();
 bindAddDialog();
+bindSettings();
 setupMediaSession();
 history.replaceState({ view: 'library' }, '');
 renderLibrary();

@@ -36,7 +36,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   background: rgba(13, 15, 28, .92); backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
-.topbar h1 { font-size: 1.15rem; margin: 0; font-weight: 600; letter-spacing: .04em; }
+.topbar h1 { font-size: 1.15rem; margin: 0; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
+.top-actions { display: flex; gap: 8px; align-items: center; }
+.icon-only { padding-left: 12px; padding-right: 12px; font-size: 1.05rem; }
 main { max-width: 760px; margin: 0 auto; padding: 16px; }
 
 /* ---------- 按鈕 ---------- */
@@ -194,6 +196,13 @@ dialog h3 { margin: 0 0 12px; }
 .check input { margin-top: 4px; accent-color: var(--accent); }
 menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 16px 0 0; }
 #bm-note { width: 100%; }
+#dlg-settings label:not(.check) { display: flex; flex-direction: column; gap: 6px; font-size: .92rem; }
+#dlg-settings .steps { padding-left: 1.3em; margin-top: 0; }
+.gm-status { min-height: 1.7em; margin-bottom: 0; }
+.gm-status.ok { color: var(--accent); }
+.gm-status.err { color: var(--danger); }
+.small-note { font-size: .8rem; margin-top: 14px; }
+.banner.clickable { cursor: pointer; }
 
 .lv-results { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
 .lv-item { display: flex; align-items: center; gap: 12px; padding: 8px; background: var(--panel); border-radius: 12px; }

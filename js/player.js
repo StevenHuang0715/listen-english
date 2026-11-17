@@ -79,7 +79,7 @@ export class BilingualPlayer extends EventTarget {
     this.book = book;
     this.en = await db.get('blobs', `${book.id}:en`);
     if (!this.en) throw new Error('找不到這本書的內容');
-    this.tr = new Translations(book.id, this.en, onTranslated);
+    this.tr = new Translations(book.id, this.en, onTranslated, { title: book.title, author: book.author, zhTitle: book.zhTitle });
     await this.setChapter(chapter, pos, false);
   }
 

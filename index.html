@@ -16,7 +16,10 @@
 <body>
   <header class="topbar">
     <h1>📖 聽書學英文</h1>
-    <button id="btn-add" class="btn primary">＋ 加入書本</button>
+    <div class="top-actions">
+      <button id="btn-settings" class="btn ghost icon-only" title="翻譯設定" aria-label="翻譯設定">⚙</button>
+      <button id="btn-add" class="btn primary">＋ 加入書本</button>
+    </div>
   </header>
 
   <main>
@@ -117,6 +120,7 @@
         <div class="tr-row">
           <span id="tr-status" class="muted"></span>
           <button id="btn-tr-all" class="btn small">翻譯整本</button>
+          <button id="btn-tr-settings" class="btn ghost small">翻譯設定</button>
         </div>
         <div id="tr-bar" class="bar" hidden><span></span></div>
       </div>
@@ -196,6 +200,37 @@
         <button class="btn primary">加入書架</button>
       </form>
     </div>
+  </dialog>
+
+  <!-- 翻譯設定 -->
+  <dialog id="dlg-settings">
+    <div class="dlg-head">
+      <h3>翻譯設定</h3>
+      <button class="btn ghost small" data-close aria-label="關閉">✕</button>
+    </div>
+    <p class="note">用 <strong>Google Gemini（AI）</strong>翻譯：會看前後文，比瀏覽器內建翻譯自然，<strong>手機也能直接翻</strong>。
+      免費，但需要你自己的 API 金鑰。</p>
+    <ol class="note steps">
+      <li>到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 用 Google 帳號登入，按「Create API key」。</li>
+      <li>複製金鑰（AIza 開頭），貼到下面，按「測試並儲存」。</li>
+    </ol>
+    <div class="stack">
+      <label>Gemini API 金鑰
+        <input id="gm-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza…">
+      </label>
+      <label class="check"><input id="gm-show" type="checkbox"> 顯示金鑰</label>
+      <label>模型 <select id="gm-model"></select></label>
+    </div>
+    <p id="gm-status" class="note gm-status" role="status"></p>
+    <menu>
+      <button id="gm-clear" class="btn ghost">清除金鑰</button>
+      <button id="gm-save" class="btn primary">測試並儲存</button>
+    </menu>
+    <p class="note small-note">
+      金鑰只存在這台裝置的瀏覽器裡，只會送給 Google，不會出現在網站程式或匯出檔裡。每台裝置要各自貼一次。<br>
+      免費方案每分鐘、每天都有次數上限；用完時會改用瀏覽器內建翻譯（如果有），隔天恢復。<br>
+      免費方案送出的文字可能被 Google 用來改進服務；這裡送出的只有公有領域書的內容。
+    </p>
   </dialog>
 
   <!-- 收藏備註 -->
